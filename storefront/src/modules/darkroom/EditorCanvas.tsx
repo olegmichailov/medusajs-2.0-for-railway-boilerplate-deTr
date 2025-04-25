@@ -1,132 +1,152 @@
-// ВОССТАНОВЛЕННЫЙ ВАРИАНТ, КОТОРЫЙ БЫЛ ДО ИЗМЕНЕНИЙ — СОХРАНЁННЫЙ ВИД МОКАПА, РИСОВАНИЕ ПО ЦЕНТРУ ЭКРАНА, МАКЕТ НЕ МЕЛКИЙ
+"use client"
 
-"use client";
-
-import { useEffect, useRef, useState } from "react";
-import { Stage, Layer, Image as KonvaImage, Line, Transformer } from "react-konva";
-import useImage from "use-image";
-import { isMobile } from "react-device-detect";
-
-const CANVAS_WIDTH = 4500;
-const CANVAS_HEIGHT = 5850;
-
-const DISPLAY_HEIGHT = isMobile ? 680 : 750;
-const DISPLAY_WIDTH = (DISPLAY_HEIGHT * CANVAS_WIDTH) / CANVAS_HEIGHT;
+import { useEffect, useRef, useState } from "react"
+import { fabric } from "fabric"
+import { HexColorPicker } from "react-colorful"
 
 export default function EditorCanvas() {
-  const [mockupImage] = useImage("/mockups/MOCAP_FRONT.png");
-  const stageRef = useRef(null);
-  const transformerRef = useRef(null);
-  const [drawings, setDrawings] = useState([]);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [brushColor, setBrushColor] = useState("#d63384");
-  const [brushSize, setBrushSize] = useState(4);
-  const [scale, setScale] = useState(1);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [mode, setMode] = useState("brush");
+  const canvasRef = useRef<fabric.Canvas | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
-  const scalePos = (pos) => ({
-    x: (pos.x * CANVAS_WIDTH) / DISPLAY_WIDTH / scale - position.x,
-    y: (pos.y * CANVAS_HEIGHT) / DISPLAY_HEIGHT / scale - position.y,
-  });
+  const [mode, setMode] = useState("brush")
+  const [color, setColor] = useState("#d64a94")
+  const [brushSize, setBrushSize] = useState(4)
+  const [opacity, setOpacity] = useState(1)
 
-  const handlePointerDown = (e) => {
-    if (mode !== "brush") return;
-    const pos = stageRef.current.getPointerPosition();
-    const scaled = scalePos(pos);
-    setIsDrawing(true);
-    setDrawings([...drawings, { color: brushColor, size: brushSize, points: [scaled.x, scaled.y] }]);
-  };
+  const CANVAS_WIDTH = 4000
+  const CANVAS_HEIGHT = 4000
 
-  const handlePointerMove = () => {
-    if (!isDrawing || mode !== "brush") return;
-    const pos = stageRef.current.getPointerPosition();
-    const scaled = scalePos(pos);
-    const lastLine = drawings[drawings.length - 1];
-    lastLine.points = lastLine.points.concat([scaled.x, scaled.y]);
-    setDrawings([...drawings.slice(0, -1), lastLine]);
-  };
+  useEffect(() => {
+    const fabricCanvas = new fabric.Canvas("canvas", {
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT,
+      preserveObjectStacking: true,
+      backgroundColor: "white",
+    })
 
-  const handlePointerUp = () => setIsDrawing(false);
+    fabric.Image.fromURL("/mockups/MOCAP_FRONT.png", (img) => {
+      img.scaleToWidth(CANVAS_WIDTH)
+      fabricCanvas.setBackgroundImage(img, fabricCanvas.renderAll.bind(fabricCanvas))
+    })
 
-  const handleZoom = (factor) => {
-    const newScale = scale * factor;
-    const center = {
-      x: (CANVAS_WIDTH / 2) * (1 - factor) + position.x * factor,
-      y: (CANVAS_HEIGHT / 2) * (1 - factor) + position.y * factor,
-    };
-    setScale(newScale);
-    setPosition(center);
-  };
+    fabricCanvas.isDrawingMode = true
+    fabricCanvas.freeDrawingBrush.color = color
+    fabricCanvas.freeDrawingBrush.width = brushSize
+    canvasRef.current = fabricCanvas
+
+    const center = fabricCanvas.getCenter()
+    fabricCanvas.absolutePan({ x: 0, y: 0 })
+
+    return () => {
+      fabricCanvas.dispose()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!canvasRef.current) return
+    canvasRef.current.freeDrawingBrush.color = color
+    canvasRef.current.freeDrawingBrush.width = brushSize
+  }, [color, brushSize])
+
+  const handleZoomIn = () => {
+    if (!canvasRef.current) return
+    const zoom = canvasRef.current.getZoom() * 1.2
+    canvasRef.current.zoomToPoint({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 }, zoom)
+  }
+
+  const handleZoomOut = () => {
+    if (!canvasRef.current) return
+    const zoom = canvasRef.current.getZoom() / 1.2
+    canvasRef.current.zoomToPoint({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 }, zoom)
+  }
+
+  const handleClear = () => {
+    if (!canvasRef.current) return
+    const bg = canvasRef.current.backgroundImage
+    canvasRef.current.clear()
+    if (bg) {
+      canvasRef.current.setBackgroundImage(bg, canvasRef.current.renderAll.bind(canvasRef.current))
+    }
+  }
+
+  const handleDownload = (withMockup = false) => {
+    if (!canvasRef.current) return
+
+    const originalBg = canvasRef.current.backgroundImage
+
+    if (!withMockup) canvasRef.current.setBackgroundImage(null, canvasRef.current.renderAll.bind(canvasRef.current))
+
+    const dataURL = canvasRef.current.toDataURL({ format: "jpeg", quality: 1 })
+    const link = document.createElement("a")
+    link.href = dataURL
+    link.download = withMockup ? "composition_mockup.jpeg" : "composition_clean.jpeg"
+    link.click()
+
+    if (!withMockup && originalBg) {
+      canvasRef.current.setBackgroundImage(originalBg, canvasRef.current.renderAll.bind(canvasRef.current))
+    }
+  }
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !canvasRef.current) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      fabric.Image.fromURL(reader.result as string, (img) => {
+        img.set({ left: 100, top: 100, opacity })
+        canvasRef.current!.add(img)
+      })
+    }
+    reader.readAsDataURL(file)
+  }
 
   return (
     <div className="w-screen h-screen bg-white overflow-hidden flex flex-col lg:flex-row">
       <div className="lg:w-1/2 p-4">
         <div className="flex flex-wrap gap-2 mb-4 text-sm">
-          <button onClick={() => setMode("move")}>Move</button>
-          <button onClick={() => setMode("brush")}>Brush</button>
-          <button onClick={() => setDrawings([])}>Clear</button>
-          <button onClick={() => handleZoom(1.25)}>Zoom In</button>
-          <button onClick={() => handleZoom(0.8)}>Zoom Out</button>
-          <button
-            onClick={() => {
-              const uri = stageRef.current.toDataURL({ pixelRatio: 4 });
-              const a = document.createElement("a");
-              a.href = uri;
-              a.download = "composition_mockup.png";
-              a.click();
-            }}
-          >
-            Download with Mockup
-          </button>
+          <button onClick={() => setMode("move")} className={`border px-3 py-1 ${mode === "move" ? "bg-black text-white" : ""}`}>Move</button>
+          <button onClick={() => setMode("brush")} className={`border px-3 py-1 ${mode === "brush" ? "bg-black text-white" : ""}`}>Brush</button>
+          <button onClick={() => handleDownload(true)} className="border px-3 py-1">Download with Mockup</button>
+          <button onClick={() => handleDownload(false)} className="border px-3 py-1">Download Clean</button>
+          <button onClick={() => handleClear()} className="border px-3 py-1">Clear</button>
+          <button onClick={handleZoomIn} className="border px-3 py-1">Zoom In</button>
+          <button onClick={handleZoomOut} className="border px-3 py-1">Zoom Out</button>
         </div>
-        <label className="block text-xs mb-1">Brush Size: {brushSize}px</label>
-        <input
-          type="range"
-          min="1"
-          max="80"
-          value={brushSize}
-          onChange={(e) => setBrushSize(Number(e.target.value))}
-          className="w-full mb-2"
-        />
-        <label className="block text-xs mb-1">Brush Color</label>
-        <input type="color" value={brushColor} onChange={(e) => setBrushColor(e.target.value)} />
+        <div className="mb-4">
+          <label className="block mb-1">Opacity: {Math.round(opacity * 100)}%</label>
+          <input
+            type="range"
+            min={0.1}
+            max={1}
+            step={0.01}
+            value={opacity}
+            onChange={(e) => setOpacity(parseFloat(e.target.value))}
+            className="w-full"
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block mb-1">Brush Size: {brushSize}px</label>
+          <input
+            type="range"
+            min={1}
+            max={100}
+            step={1}
+            value={brushSize}
+            onChange={(e) => setBrushSize(parseInt(e.target.value))}
+            className="w-full"
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block mb-1">Brush Color</label>
+          <HexColorPicker color={color} onChange={setColor} />
+        </div>
+        <div>
+          <input type="file" onChange={handleImageUpload} />
+        </div>
       </div>
-
-      <div className="lg:w-1/2 h-full flex items-center justify-center">
-        <div style={{ width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT }}>
-          <Stage
-            width={DISPLAY_WIDTH}
-            height={DISPLAY_HEIGHT}
-            scale={{ x: DISPLAY_WIDTH / CANVAS_WIDTH * scale, y: DISPLAY_HEIGHT / CANVAS_HEIGHT * scale }}
-            x={-position.x * (DISPLAY_WIDTH / CANVAS_WIDTH * scale)}
-            y={-position.y * (DISPLAY_HEIGHT / CANVAS_HEIGHT * scale)}
-            ref={stageRef}
-            onMouseDown={handlePointerDown}
-            onMousemove={handlePointerMove}
-            onMouseup={handlePointerUp}
-            onTouchStart={handlePointerDown}
-            onTouchMove={handlePointerMove}
-            onTouchEnd={handlePointerUp}
-          >
-            <Layer>
-              {mockupImage && <KonvaImage image={mockupImage} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />}
-              {drawings.map((line, i) => (
-                <Line
-                  key={i}
-                  points={line.points}
-                  stroke={line.color}
-                  strokeWidth={line.size}
-                  tension={0.5}
-                  lineCap="round"
-                  globalCompositeOperation="source-over"
-                />
-              ))}
-              <Transformer ref={transformerRef} rotateEnabled={true} />
-            </Layer>
-          </Stage>
-        </div>
+      <div className="lg:w-1/2 overflow-auto flex items-center justify-center" ref={containerRef}>
+        <canvas id="canvas" className="border" />
       </div>
     </div>
-  );
+  )
 }
