@@ -1,4 +1,4 @@
-// Final stable EditorCanvas.tsx with HQ render, centered zoom, hideable handles, and thick brush
+// EditorCanvas.tsx — финальная версия с сохранением дизайна, повышенным качеством, Zoom, Move, отключением хендлов и экспортом в 2 PNG
 
 "use client";
 
@@ -8,10 +8,10 @@ import useImage from "use-image";
 import { useRouter } from "next/navigation";
 import { isMobile } from "react-device-detect";
 
-const REAL_WIDTH = 4500;
-const REAL_HEIGHT = 5000;
-const DISPLAY_HEIGHT = isMobile ? 680 : 750;
-const DISPLAY_WIDTH = (DISPLAY_HEIGHT * REAL_WIDTH) / REAL_HEIGHT;
+const CANVAS_WIDTH = 4500;
+const CANVAS_HEIGHT = 5000;
+const PREVIEW_HEIGHT = isMobile ? 680 : 750;
+const PREVIEW_WIDTH = (PREVIEW_HEIGHT * CANVAS_WIDTH) / CANVAS_HEIGHT;
 
 const EditorCanvas = () => {
   const router = useRouter();
@@ -22,10 +22,11 @@ const EditorCanvas = () => {
   const [drawings, setDrawings] = useState<any[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushColor, setBrushColor] = useState("#d63384");
-  const [brushSize, setBrushSize] = useState(5);
-  const [mode, setMode] = useState<"move" | "brush" | "zoom">("brush");
-  const [zoom, setZoom] = useState(1);
+  const [brushSize, setBrushSize] = useState(4);
+  const [mode, setMode] = useState<"move" | "brush">("brush");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
 
   const [mockupImage] = useImage(
     mockupType === "front" ? "/mockups/MOCAP_FRONT.png" : "/mockups/MOCAP_BACK.png"
@@ -44,8 +45,8 @@ const EditorCanvas = () => {
         img.onload = () => {
           const newImage = {
             image: img,
-            x: 200,
-            y: 200,
+            x: 100,
+            y: 150,
             width: img.width / 2,
             height: img.height / 2,
             rotation: 0,
@@ -62,14 +63,12 @@ const EditorCanvas = () => {
   };
 
   const scalePos = (pos: { x: number; y: number }) => ({
-    x: pos.x / zoom,
-    y: pos.y / zoom,
+    x: (pos.x - position.x) / zoom,
+    y: (pos.y - position.y) / zoom,
   });
 
   const handlePointerDown = (e: any) => {
-    if (e.target === e.target.getStage()) {
-      setSelectedImageIndex(null);
-    }
+    if (e.target === e.target.getStage()) setSelectedImageIndex(null);
     if (mode !== "brush") return;
     const pos = stageRef.current.getPointerPosition();
     if (!pos) return;
@@ -97,19 +96,28 @@ const EditorCanvas = () => {
         transformerRef.current.nodes([node]);
         transformerRef.current.getLayer().batchDraw();
       }
+    } else if (transformerRef.current) {
+      transformerRef.current.nodes([]);
     }
   }, [selectedImageIndex]);
 
-  const downloadImage = (withMockup: boolean) => {
+  const downloadImage = (withMockup = true) => {
     const stage = stageRef.current;
-    const layer = stage.children[0];
-    if (!withMockup) layer.findOne("Image").hide();
-    const uri = stage.toDataURL({ pixelRatio: 1 });
-    const a = document.createElement("a");
-    a.href = uri;
-    a.download = withMockup ? "with-mockup.png" : "clean.png";
-    a.click();
-    if (!withMockup) layer.findOne("Image").show();
+    const originalZoom = zoom;
+    const originalPos = position;
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+    setTimeout(() => {
+      if (!withMockup) {
+        mockupImage && (mockupImage.src = "");
+      }
+      const uri = stage.toDataURL({ pixelRatio: 1 });
+      const a = document.createElement("a");
+      a.href = uri;
+      a.download = withMockup ? "composition_mockup.png" : "composition_clean.png";
+      a.click();
+      window.location.reload();
+    }, 200);
   };
 
   return (
@@ -128,8 +136,10 @@ const EditorCanvas = () => {
             <button className="border px-3 py-1" onClick={() => setMockupType("front")}>Front</button>
             <button className="border px-3 py-1" onClick={() => setMockupType("back")}>Back</button>
             <button className="border px-3 py-1" onClick={() => setDrawings([])}>Clear</button>
-            <button className="bg-black text-white px-3 py-1" onClick={() => downloadImage(true)}>Download (Mockup)</button>
-            <button className="border px-3 py-1" onClick={() => downloadImage(false)}>Download (Clean)</button>
+            <button className="border px-3 py-1" onClick={() => setZoom(Math.min(3, zoom + 0.25))}>Zoom In</button>
+            <button className="border px-3 py-1" onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}>Zoom Out</button>
+            <button className="bg-black text-white px-3 py-1" onClick={() => downloadImage(true)}>Download with Mockup</button>
+            <button className="bg-black text-white px-3 py-1" onClick={() => downloadImage(false)}>Download Clean</button>
           </div>
           <input type="file" accept="image/*" onChange={handleFileChange} className="mb-3" />
           <label className="block text-xs mb-1">Opacity: {Math.round(opacity * 100)}%</label>
@@ -144,31 +154,29 @@ const EditorCanvas = () => {
           <label className="block text-xs mb-1">Brush Size: {brushSize}px</label>
           <input type="range" min="1" max="100" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-full mb-2" />
           <label className="block text-xs mb-1">Brush Color</label>
-          <input type="color" value={brushColor} onChange={(e) => setBrushColor(e.target.value)} className="w-8 h-8 border p-0" />
-          <label className="block text-xs mt-2">Zoom: {zoom.toFixed(2)}x</label>
-          <input type="range" min="0.2" max="3" step="0.01" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-full" />
+          <input type="color" value={brushColor} onChange={(e) => setBrushColor(e.target.value)} className="w-8 h-8 border p-0 cursor-pointer" />
         </div>
       </div>
-
       <div className="lg:w-1/2 h-full flex items-center justify-center">
-        <div style={{ width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT }}>
+        <div style={{ width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT }}>
           <Stage
-            width={REAL_WIDTH}
-            height={REAL_HEIGHT}
-            scale={{ x: zoom, y: zoom }}
-            offset={{ x: REAL_WIDTH / 2, y: REAL_HEIGHT / 2 }}
-            x={REAL_WIDTH / 2 * zoom}
-            y={REAL_HEIGHT / 2 * zoom}
+            width={CANVAS_WIDTH}
+            height={CANVAS_HEIGHT}
             ref={stageRef}
+            scaleX={zoom}
+            scaleY={zoom}
+            x={position.x}
+            y={position.y}
             onMouseDown={handlePointerDown}
             onMousemove={handlePointerMove}
             onMouseup={handlePointerUp}
             onTouchStart={handlePointerDown}
             onTouchMove={handlePointerMove}
             onTouchEnd={handlePointerUp}
+            draggable={mode === "move"}
           >
             <Layer>
-              {mockupImage && <KonvaImage image={mockupImage} width={REAL_WIDTH} height={REAL_HEIGHT} />}
+              {mockupImage && <KonvaImage image={mockupImage} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />}
               {images.map((img, index) => (
                 <KonvaImage
                   key={img.id}
@@ -196,7 +204,8 @@ const EditorCanvas = () => {
                   globalCompositeOperation="source-over"
                 />
               ))}
-              {selectedImageIndex !== null && <Transformer ref={transformerRef} rotateEnabled={true} />}            </Layer>
+              {selectedImageIndex !== null && <Transformer ref={transformerRef} rotateEnabled={true} anchorSize={15} />}  
+            </Layer>
           </Stage>
         </div>
       </div>
