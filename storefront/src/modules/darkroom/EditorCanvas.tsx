@@ -1,4 +1,4 @@
-// Final EditorCanvas.tsx with improvements applied — handles toggle, dual export, high-res mode
+// EditorCanvas.tsx — Final Version with High-Resolution Canvas, Zoom, and Clean Export
 
 "use client";
 
@@ -8,7 +8,7 @@ import useImage from "use-image";
 import { useRouter } from "next/navigation";
 import { isMobile } from "react-device-detect";
 
-const CANVAS_WIDTH = 4000;
+const CANVAS_WIDTH = 4500;
 const CANVAS_HEIGHT = 5000;
 const DISPLAY_HEIGHT = isMobile ? 680 : 750;
 const DISPLAY_WIDTH = (DISPLAY_HEIGHT * CANVAS_WIDTH) / CANVAS_HEIGHT;
@@ -24,8 +24,9 @@ const EditorCanvas = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushColor, setBrushColor] = useState("#d63384");
   const [brushSize, setBrushSize] = useState(4);
-  const [mode, setMode] = useState<"move" | "brush">("brush");
+  const [mode, setMode] = useState<"move" | "brush" | "zoom">("brush");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(0.2);
 
   const [mockupImage] = useImage(
     mockupType === "front" ? "/mockups/MOCAP_FRONT.png" : "/mockups/MOCAP_BACK.png"
@@ -46,8 +47,8 @@ const EditorCanvas = () => {
             image: img,
             x: 100,
             y: 150,
-            width: img.width / 4,
-            height: img.height / 4,
+            width: img.width,
+            height: img.height,
             rotation: 0,
             opacity: 1,
             id: Date.now().toString(),
@@ -62,13 +63,12 @@ const EditorCanvas = () => {
   };
 
   const scalePos = (pos: { x: number; y: number }) => ({
-    x: (pos.x * CANVAS_WIDTH) / DISPLAY_WIDTH,
-    y: (pos.y * CANVAS_HEIGHT) / DISPLAY_HEIGHT,
+    x: (pos.x * CANVAS_WIDTH) / (CANVAS_WIDTH * zoomLevel),
+    y: (pos.y * CANVAS_HEIGHT) / (CANVAS_HEIGHT * zoomLevel),
   });
 
   const handlePointerDown = (e: any) => {
-    const isStage = e.target === e.target.getStage();
-    if (isStage) setSelectedImageIndex(null);
+    if (e.target === e.target.getStage()) setSelectedImageIndex(null);
     if (mode !== "brush") return;
     const pos = stageRef.current.getPointerPosition();
     if (!pos) return;
@@ -101,18 +101,23 @@ const EditorCanvas = () => {
     }
   }, [selectedImageIndex]);
 
-  const exportCanvas = (includeMockup = true) => {
-    const originalMockup = mockupImage;
-    const mockupLayer = stageRef.current.findOne("Image");
-    if (!includeMockup && mockupLayer) mockupLayer.hide();
-
-    const uri = stageRef.current.toDataURL({ pixelRatio: 1 });
-    const link = document.createElement("a");
-    link.download = includeMockup ? "mockup.png" : "artwork.png";
-    link.href = uri;
-    link.click();
-
-    if (!includeMockup && mockupLayer) mockupLayer.show();
+  const exportImage = (withMockup: boolean) => {
+    const stage = stageRef.current;
+    const originalLayer = stage.findOne("Layer");
+    if (!originalLayer) return;
+    if (!withMockup) {
+      const mockupNode = originalLayer.findOne("Image");
+      mockupNode?.hide();
+    }
+    const uri = stage.toDataURL({ pixelRatio: 1 });
+    const a = document.createElement("a");
+    a.href = uri;
+    a.download = withMockup ? "composition_with_mockup.png" : "composition_clean.png";
+    a.click();
+    if (!withMockup) {
+      const mockupNode = originalLayer.findOne("Image");
+      mockupNode?.show();
+    }
   };
 
   return (
@@ -128,11 +133,12 @@ const EditorCanvas = () => {
           <div className="flex flex-wrap gap-2 mb-4 text-sm">
             <button className={`border px-3 py-1 ${mode === "move" ? "bg-black text-white" : ""}`} onClick={() => setMode("move")}>Move</button>
             <button className={`border px-3 py-1 ${mode === "brush" ? "bg-black text-white" : ""}`} onClick={() => setMode("brush")}>Brush</button>
+            <button className={`border px-3 py-1 ${mode === "zoom" ? "bg-black text-white" : ""}`} onClick={() => setMode("zoom")}>Zoom</button>
             <button className="border px-3 py-1" onClick={() => setMockupType("front")}>Front</button>
             <button className="border px-3 py-1" onClick={() => setMockupType("back")}>Back</button>
             <button className="border px-3 py-1" onClick={() => setDrawings([])}>Clear</button>
-            <button className="bg-black text-white px-3 py-1" onClick={() => exportCanvas(true)}>Download (with mockup)</button>
-            <button className="bg-black text-white px-3 py-1" onClick={() => exportCanvas(false)}>Download (art only)</button>
+            <button className="bg-black text-white px-3 py-1" onClick={() => exportImage(true)}>Export w/ Mockup</button>
+            <button className="bg-black text-white px-3 py-1" onClick={() => exportImage(false)}>Export Clean</button>
           </div>
           <input type="file" accept="image/*" onChange={handleFileChange} className="mb-3" />
           <label className="block text-xs mb-1">Opacity: {Math.round(opacity * 100)}%</label>
@@ -143,20 +149,22 @@ const EditorCanvas = () => {
               newImages[selectedImageIndex].opacity = Number(e.target.value);
               setImages(newImages);
             }
-          }} className="w-full mb-2 h-[2px] bg-black appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:bg-black [&::-webkit-slider-thumb]:rounded-none" />
+          }} className="w-full mb-2 h-[2px] bg-black appearance-none cursor-pointer" />
           <label className="block text-xs mb-1">Brush Size: {brushSize}px</label>
-          <input type="range" min="1" max="30" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-full mb-2 h-[2px] bg-black appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:bg-black [&::-webkit-slider-thumb]:rounded-none" />
+          <input type="range" min="1" max="100" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-full mb-2 h-[2px] bg-black appearance-none cursor-pointer" />
           <label className="block text-xs mb-1">Brush Color</label>
           <input type="color" value={brushColor} onChange={(e) => setBrushColor(e.target.value)} className="w-8 h-8 border p-0 cursor-pointer" />
+          <label className="block text-xs mt-2">Zoom: {Math.round(zoomLevel * 100)}%</label>
+          <input type="range" min="0.1" max="1" step="0.05" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))} className="w-full h-[2px] bg-black appearance-none cursor-pointer" />
         </div>
       </div>
 
       <div className="lg:w-1/2 h-full flex items-center justify-center">
         <div style={{ width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT, transform: "translateY(-30px) scale(0.95)" }}>
           <Stage
-            width={DISPLAY_WIDTH}
-            height={DISPLAY_HEIGHT}
-            scale={{ x: DISPLAY_WIDTH / CANVAS_WIDTH, y: DISPLAY_HEIGHT / CANVAS_HEIGHT }}
+            width={CANVAS_WIDTH * zoomLevel}
+            height={CANVAS_HEIGHT * zoomLevel}
+            scale={{ x: zoomLevel, y: zoomLevel }}
             ref={stageRef}
             onMouseDown={handlePointerDown}
             onMousemove={handlePointerMove}
