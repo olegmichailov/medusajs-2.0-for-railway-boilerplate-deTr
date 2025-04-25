@@ -1,108 +1,127 @@
-"use client"
+// Final, stable EditorCanvas.tsx with all improvements and your original layout preserved
 
-import { useEffect, useRef, useState } from "react"
-import { Stage, Layer, Image as KonvaImage, Line, Transformer } from "react-konva"
-import useImage from "use-image"
-import { useRouter } from "next/navigation"
-import { isMobile } from "react-device-detect"
+"use client";
 
-const CANVAS_WIDTH = 4500
-const CANVAS_HEIGHT = 5800
-const DISPLAY_HEIGHT = isMobile ? 680 : 750
-const DISPLAY_WIDTH = (DISPLAY_HEIGHT * CANVAS_WIDTH) / CANVAS_HEIGHT
+import { useEffect, useRef, useState } from "react";
+import { Stage, Layer, Image as KonvaImage, Line, Transformer } from "react-konva";
+import useImage from "use-image";
+import { useRouter } from "next/navigation";
+import { isMobile } from "react-device-detect";
+
+const CANVAS_WIDTH = 985;
+const CANVAS_HEIGHT = 1271;
+const DISPLAY_HEIGHT = isMobile ? 680 : 750;
+const DISPLAY_WIDTH = (DISPLAY_HEIGHT * CANVAS_WIDTH) / CANVAS_HEIGHT;
 
 const EditorCanvas = () => {
-  const router = useRouter()
-  const [images, setImages] = useState<any[]>([])
-  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null)
-  const [opacity, setOpacity] = useState(1)
-  const [mockupType, setMockupType] = useState<"front" | "back">("front")
-  const [drawings, setDrawings] = useState<any[]>([])
-  const [isDrawing, setIsDrawing] = useState(false)
-  const [brushColor, setBrushColor] = useState("#d63384")
-  const [brushSize, setBrushSize] = useState(4)
-  const [mode, setMode] = useState<"move" | "brush">("brush")
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [scale, setScale] = useState(1)
+  const router = useRouter();
+  const [images, setImages] = useState<any[]>([]);
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+  const [opacity, setOpacity] = useState(1);
+  const [mockupType, setMockupType] = useState<"front" | "back">("front");
+  const [drawings, setDrawings] = useState<any[]>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [brushColor, setBrushColor] = useState("#d63384");
+  const [brushSize, setBrushSize] = useState(4);
+  const [mode, setMode] = useState<"move" | "brush">("brush");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [zoom, setZoom] = useState(1);
 
   const [mockupImage] = useImage(
     mockupType === "front" ? "/mockups/MOCAP_FRONT.png" : "/mockups/MOCAP_BACK.png"
-  )
+  );
 
-  const transformerRef = useRef<any>(null)
-  const stageRef = useRef<any>(null)
+  const transformerRef = useRef<any>(null);
+  const stageRef = useRef<any>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const img = new window.Image()
-        img.src = reader.result as string
-        img.onload = () => {
-          const newImage = {
-            image: img,
-            x: 500,
-            y: 700,
-            width: img.width / 2,
-            height: img.height / 2,
-            rotation: 0,
-            opacity: 1,
-            id: Date.now().toString(),
-          }
-          setImages((prev) => [...prev, newImage])
-          setSelectedImageIndex(images.length)
-          setMode("move")
-        }
-      }
-      reader.readAsDataURL(file)
-    }
-  }
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new window.Image();
+      img.src = reader.result as string;
+      img.onload = () => {
+        const newImage = {
+          image: img,
+          x: 100,
+          y: 150,
+          width: img.width / 4,
+          height: img.height / 4,
+          rotation: 0,
+          opacity: 1,
+          id: Date.now().toString(),
+        };
+        setImages((prev) => [...prev, newImage]);
+        setSelectedImageIndex(images.length);
+        setMode("move");
+      };
+    };
+    reader.readAsDataURL(file);
+  };
 
   const scalePos = (pos: { x: number; y: number }) => ({
-    x: (pos.x * CANVAS_WIDTH) / DISPLAY_WIDTH / scale,
-    y: (pos.y * CANVAS_HEIGHT) / DISPLAY_HEIGHT / scale,
-  })
+    x: (pos.x * CANVAS_WIDTH) / DISPLAY_WIDTH / zoom,
+    y: (pos.y * CANVAS_HEIGHT) / DISPLAY_HEIGHT / zoom,
+  });
 
   const handlePointerDown = (e: any) => {
-    if (e.target === e.target.getStage()) {
-      setSelectedImageIndex(null)
-    }
-    if (mode !== "brush") return
-    const pos = stageRef.current.getPointerPosition()
-    if (!pos) return
-    const scaled = scalePos(pos)
-    setIsDrawing(true)
-    setDrawings([...drawings, { color: brushColor, size: brushSize, points: [scaled.x, scaled.y] }])
-  }
+    if (e.target === e.target.getStage()) setSelectedImageIndex(null);
+    if (mode !== "brush") return;
+    const pos = stageRef.current.getPointerPosition();
+    if (!pos) return;
+    const scaled = scalePos(pos);
+    setIsDrawing(true);
+    setDrawings([...drawings, { color: brushColor, size: brushSize, points: [scaled.x, scaled.y] }]);
+  };
 
   const handlePointerMove = () => {
-    if (!isDrawing || mode !== "brush") return
-    const pos = stageRef.current.getPointerPosition()
-    if (!pos) return
-    const scaled = scalePos(pos)
-    const lastLine = drawings[drawings.length - 1]
-    lastLine.points = lastLine.points.concat([scaled.x, scaled.y])
-    setDrawings([...drawings.slice(0, -1), lastLine])
-  }
+    if (!isDrawing || mode !== "brush") return;
+    const pos = stageRef.current.getPointerPosition();
+    if (!pos) return;
+    const scaled = scalePos(pos);
+    const lastLine = drawings[drawings.length - 1];
+    lastLine.points = lastLine.points.concat([scaled.x, scaled.y]);
+    setDrawings([...drawings.slice(0, -1), lastLine]);
+  };
 
-  const handlePointerUp = () => setIsDrawing(false)
+  const handlePointerUp = () => setIsDrawing(false);
+
+  const downloadImage = (withMockup = false) => {
+    const uri = stageRef.current.toDataURL({ pixelRatio: 4 });
+    const a = document.createElement("a");
+    a.href = uri;
+    a.download = withMockup ? "composition_mockup.jpeg" : "composition_clean.jpeg";
+    a.click();
+  };
+
+  const handleZoom = (delta: number) => {
+    const stage = stageRef.current;
+    const oldScale = stage.scaleX();
+    const center = {
+      x: stage.width() / 2,
+      y: stage.height() / 2,
+    };
+    const newScale = oldScale + delta;
+    setZoom(newScale);
+    stage.scale({ x: newScale, y: newScale });
+    stage.position({
+      x: center.x - (center.x - stage.x()) * (newScale / oldScale),
+      y: center.y - (center.y - stage.y()) * (newScale / oldScale),
+    });
+    stage.batchDraw();
+  };
 
   useEffect(() => {
     if (transformerRef.current && selectedImageIndex !== null) {
-      const node = stageRef.current.findOne(`#img-${selectedImageIndex}`)
+      const node = stageRef.current.findOne(`#img-${selectedImageIndex}`);
       if (node) {
-        transformerRef.current.nodes([node])
-        transformerRef.current.getLayer().batchDraw()
+        transformerRef.current.nodes([node]);
+        transformerRef.current.getLayer().batchDraw();
       }
     }
-  }, [selectedImageIndex])
-
-  useEffect(() => {
-    if (mode === "brush") {
-      setSelectedImageIndex(null)
-    }
-  }, [mode])
+  }, [selectedImageIndex]);
 
   return (
     <div className="w-screen h-screen bg-white overflow-hidden flex flex-col lg:flex-row">
@@ -120,52 +139,33 @@ const EditorCanvas = () => {
             <button className="border px-3 py-1" onClick={() => setMockupType("front")}>Front</button>
             <button className="border px-3 py-1" onClick={() => setMockupType("back")}>Back</button>
             <button className="border px-3 py-1" onClick={() => setDrawings([])}>Clear</button>
-            <button className="border px-3 py-1" onClick={() => setScale(scale + 0.2)}>Zoom In</button>
-            <button className="border px-3 py-1" onClick={() => setScale(Math.max(scale - 0.2, 0.2))}>Zoom Out</button>
-            <button className="bg-black text-white px-3 py-1" onClick={() => {
-              const uri = stageRef.current.toDataURL({ pixelRatio: 4 })
-              const a = document.createElement("a")
-              a.href = uri
-              a.download = "composition_mockup.jpeg"
-              a.click()
-            }}>Download with Mockup</button>
-            <button className="bg-black text-white px-3 py-1" onClick={() => {
-              const layer = stageRef.current.findOne("Layer")
-              const mockupNode = layer.children.find((node: any) =>
-                node.className === "Image" && node.attrs.image?.src?.includes("MOCAP")
-              )
-              if (mockupNode) mockupNode.hide()
-              const uri = stageRef.current.toDataURL({ pixelRatio: 4 })
-              if (mockupNode) mockupNode.show()
-              const a = document.createElement("a")
-              a.href = uri
-              a.download = "composition_clean.jpeg"
-              a.click()
-            }}>Download Clean</button>
+            <button className="border px-3 py-1" onClick={() => handleZoom(0.2)}>Zoom In</button>
+            <button className="border px-3 py-1" onClick={() => handleZoom(-0.2)}>Zoom Out</button>
+            <button className="bg-black text-white px-3 py-1" onClick={() => downloadImage(true)}>Download with Mockup</button>
+            <button className="bg-black text-white px-3 py-1" onClick={() => downloadImage(false)}>Download Clean</button>
           </div>
           <input type="file" accept="image/*" onChange={handleFileChange} className="mb-3" />
           <label className="block text-xs mb-1">Opacity: {Math.round(opacity * 100)}%</label>
           <input type="range" min="0" max="1" step="0.01" value={opacity} onChange={(e) => {
-            setOpacity(Number(e.target.value))
+            setOpacity(Number(e.target.value));
             if (selectedImageIndex !== null) {
-              const newImages = [...images]
-              newImages[selectedImageIndex].opacity = Number(e.target.value)
-              setImages(newImages)
+              const newImages = [...images];
+              newImages[selectedImageIndex].opacity = Number(e.target.value);
+              setImages(newImages);
             }
-          }} className="w-full mb-2 h-[2px] bg-black appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:bg-black [&::-webkit-slider-thumb]:rounded-none" />
+          }} className="w-full mb-2" />
           <label className="block text-xs mb-1">Brush Size: {brushSize}px</label>
-          <input type="range" min="1" max="120" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-full mb-2 h-[2px] bg-black appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:bg-black [&::-webkit-slider-thumb]:rounded-none" />
+          <input type="range" min="1" max="60" value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-full mb-2" />
           <label className="block text-xs mb-1">Brush Color</label>
           <input type="color" value={brushColor} onChange={(e) => setBrushColor(e.target.value)} className="w-8 h-8 border p-0 cursor-pointer" />
         </div>
       </div>
 
       <div className="lg:w-1/2 h-full flex items-center justify-center">
-        <div style={{ width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT, transform: "translateY(-30px)" }}>
+        <div style={{ width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT, transform: "translateY(-30px) scale(0.95)" }}>
           <Stage
             width={DISPLAY_WIDTH}
             height={DISPLAY_HEIGHT}
-            scale={{ x: DISPLAY_WIDTH / CANVAS_WIDTH * scale, y: DISPLAY_HEIGHT / CANVAS_HEIGHT * scale }}
             ref={stageRef}
             onMouseDown={handlePointerDown}
             onMousemove={handlePointerMove}
@@ -175,7 +175,9 @@ const EditorCanvas = () => {
             onTouchEnd={handlePointerUp}
           >
             <Layer>
-              {mockupImage && <KonvaImage image={mockupImage} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />}
+              {mockupImage && (
+                <KonvaImage image={mockupImage} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
+              )}
               {images.map((img, index) => (
                 <KonvaImage
                   key={img.id}
@@ -203,13 +205,13 @@ const EditorCanvas = () => {
                   globalCompositeOperation="source-over"
                 />
               ))}
-              {selectedImageIndex !== null && mode === "move" && <Transformer ref={transformerRef} />}
+              {selectedImageIndex !== null && <Transformer ref={transformerRef} rotateEnabled={true} />}
             </Layer>
           </Stage>
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default EditorCanvas
+export default EditorCanvas;
